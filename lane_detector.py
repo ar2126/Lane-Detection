@@ -37,25 +37,22 @@ def non_max_suppression(gradient_magnitude, gradient_direction):
     angle = gradient_direction * 180. / np.pi
     angle[angle < 0] += 180
 
+    pi = 180
     for i in range(1, row - 1):
         for j in range(1, col - 1):
             q = 255
             r = 255
 
-            # angle 0
-            if (0 <= angle[i, j] < 22.5) or (157.5 <= angle[i, j] <= 180):
+            if (0 <= angle[i, j] < pi/8) or (pi - (pi/8) <= angle[i, j] <= pi):
                 q = gradient_magnitude[i, j + 1]
                 r = gradient_magnitude[i, j - 1]
-            # angle 45
-            elif (22.5 <= angle[i, j] < 67.5):
+            elif (pi/8 <= angle[i, j] < (pi/4) + (pi/8)):
                 q = gradient_magnitude[i + 1, j - 1]
                 r = gradient_magnitude[i - 1, j + 1]
-            # angle 90
-            elif (67.5 <= angle[i, j] < 112.5):
+            elif ((pi/4) + (pi/8) <= angle[i, j] < (pi/2) + (pi/8)):
                 q = gradient_magnitude[i + 1, j]
                 r = gradient_magnitude[i - 1, j]
-            # angle 135
-            elif (112.5 <= angle[i, j] < 157.5):
+            elif ((pi/2) + (pi/8) <= angle[i, j] < pi - (pi/8)):
                 q = gradient_magnitude[i - 1, j - 1]
                 r = gradient_magnitude[i + 1, j + 1]
 
@@ -64,6 +61,30 @@ def non_max_suppression(gradient_magnitude, gradient_direction):
             else:
                 output[i, j] = 0
     return output.astype('uint8')
+
+def threshold(img, strong, weak, nonrelevant=100):
+    output = np.zeros(img.shape)
+
+    strong_row, strong_col = np.where(img >= strong)
+    weak_row, weak_col = np.where((img <= strong) & (img >= weak))
+
+    output[strong_row, strong_col] = 255
+    output[weak_row, weak_col] = nonrelevant
+
+    return output
+
+def hysteresis(img, nonrelevant=100, strong=255):
+    row, col = img.shape
+    for i in range(1, row - 1):
+        for j in range(1, col - 1):
+            if img[i, j] == nonrelevant:
+                if ((img[i + 1, j - 1] == strong) or (img[i + 1, j] == strong) or (img[i + 1, j + 1] == strong)
+                    or (img[i, j - 1] == strong) or (img[i, j + 1] == strong)
+                    or (img[i - 1, j - 1] == strong) or (img[i - 1, j] == strong) or (img[i - 1, j + 1] == strong)):
+                    img[i, j] = strong
+                else:
+                    img[i, j] = 0
+    return img
 
 if __name__ == '__main__':
     original_img = cv2.imread('images/dashcam.png')
@@ -74,6 +95,8 @@ if __name__ == '__main__':
     sobel, theta = sobel_edge_detection(gauss, sobel_filter)
 
     nonmax = non_max_suppression(sobel, theta)
-    cv2.imshow('butt', nonmax)
-    cv2.waitKey(0)
-    cv2.imwrite('images/nonmax_suppression.jpg', nonmax)
+    double_threshold = threshold(nonmax, 20, 5)
+    canny_image = hysteresis(double_threshold)
+    #cv2.imshow('image', canny_highway)
+    #cv2.waitKey(0)
+    cv2.imwrite('images/canny.jpg', canny_image)
