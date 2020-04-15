@@ -99,6 +99,7 @@ def hysteresis(img, nonrelevant=100, strong=255):
                     img[i, j] = 0
     return img
 
+
 def process_img(original_img):
     original_img = cv2.imread('images/dashcam.png')
     gry_img = cv2.cvtColor(original_img, cv2.COLOR_RGB2GRAY)
@@ -110,15 +111,18 @@ def process_img(original_img):
     nonmax = non_max_suppression(sobel, theta)
     double_threshold = threshold(nonmax, 20, 5)
     canny_image = hysteresis(double_threshold)
-    
+
     canny_highway = hysteresis(double_threshold)
 
     filtered_canny = apply_filter(canny_highway)
     return filtered_canny
 
+
 '''
 TODO: edit dimensions and fine-tune based on the video img size
 '''
+
+
 def apply_filter(img):
     height, width = img.shape
     left_region = width * 0.15
@@ -135,6 +139,7 @@ def apply_filter(img):
     segment = cv2.bitwise_and(img, mask)
     return segment
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Detect lanes in an image, video file, or webcam using canny edge detection and hough transform.')
@@ -142,8 +147,8 @@ if __name__ == '__main__':
                         help='a file to process')
 
     args = parser.parse_args()
-    if args.open:
-        filename = args.open
+    if args.input:
+        filename = args.input
         ext = filename.split('.')[1]
         if ext in VIDEO_FILES:
             print("Processing {} as a video file".format(filename))
@@ -166,7 +171,7 @@ if __name__ == '__main__':
             original_img = cv2.imread(filename)
             processed = process_img(original_img)
             cv2.imwrite('images/processed.jpg', processed)
-     
+
     #cv2.imshow('image', filtered_canny)
     #cv2.imshow('mask', mask)
-    #cv2.waitKey(0)
+    # cv2.waitKey(0)
