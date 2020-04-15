@@ -99,8 +99,8 @@ def hysteresis(img, nonrelevant=100, strong=255):
                     img[i, j] = 0
     return img
 
-
-def process(original_img):
+def process_img(original_img):
+    original_img = cv2.imread('images/dashcam.png')
     gry_img = cv2.cvtColor(original_img, cv2.COLOR_RGB2GRAY)
     gauss = filter_gaussian(gry_img)
 
@@ -110,8 +110,30 @@ def process(original_img):
     nonmax = non_max_suppression(sobel, theta)
     double_threshold = threshold(nonmax, 20, 5)
     canny_image = hysteresis(double_threshold)
-    return canny_image
+    
+    canny_highway = hysteresis(double_threshold)
 
+    filtered_canny = apply_filter(canny_highway)
+    return filtered_canny
+
+'''
+TODO: edit dimensions and fine-tune based on the video img size
+'''
+def apply_filter(img):
+    height, width = img.shape
+    left_region = width * 0.15
+    right_region = width * 0.85
+
+    polygons = np.array([
+        [(int(left_region), height), (int(right_region), height), (int(width/2), 245)]
+    ])
+    # Creates an image filled with zero intensities with the same dimensions as the frame
+    mask = np.zeros(img.shape)
+    # Allows the mask to be filled with values of 1 and the other areas to be filled with values of 0
+    cv2.fillPoly(mask, polygons, 255)
+    # A bitwise and operation between the mask and frame keeps only the triangular area of the frame
+    segment = cv2.bitwise_and(img, mask)
+    return segment
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -132,7 +154,7 @@ if __name__ == '__main__':
             while(cap.isOpened()):
                 ret, frame = cap.read()
                 if ret:
-                    processed = process(frame)
+                    processed = process_img(frame)
                     cv2.imwrite('frames/frame{}.jpg'.format(frames), processed)
                     frames += 1
                     spinner.text = 'Proccessing frame {}'.format(frames)
@@ -142,5 +164,9 @@ if __name__ == '__main__':
         else:
             print("Processing {} as a image file".format(filename))
             original_img = cv2.imread(filename)
-            processed = process(original_img)
+            processed = process_img(original_img)
             cv2.imwrite('images/processed.jpg', processed)
+     
+    #cv2.imshow('image', filtered_canny)
+    #cv2.imshow('mask', mask)
+    #cv2.waitKey(0)
