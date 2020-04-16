@@ -31,6 +31,8 @@ def filter_gaussian(img):
 
 def sobel_edge_detection(image, filter):
     sobel_edge_x = cv2.filter2D(image, -1, filter)
+    #sobel_edge_x = image[:, 2:] - image[:, :-2]
+    #sobel_edge_x = sobel_edge_p[:-2] + sobel_edge_p[2:] + 2*sobel_edge_p[1:-1]
 
     sobel_edge_y = cv2.filter2D(image, -1, np.flip(filter.T, axis=0))
 
@@ -101,7 +103,7 @@ def hysteresis(img, nonrelevant=100, strong=255):
 
 
 def process_img(original_img):
-    original_img = cv2.imread('images/dashcam.png')
+
     gry_img = cv2.cvtColor(original_img, cv2.COLOR_RGB2GRAY)
     gauss = filter_gaussian(gry_img)
 
@@ -110,12 +112,13 @@ def process_img(original_img):
 
     nonmax = non_max_suppression(sobel, theta)
     double_threshold = threshold(nonmax, 20, 5)
-    canny_image = hysteresis(double_threshold)
 
     canny_highway = hysteresis(double_threshold)
 
     filtered_canny = apply_filter(canny_highway)
+
     return filtered_canny
+    #return cv2.Canny(original_img, 100, 255)
 
 
 '''
@@ -153,6 +156,8 @@ if __name__ == '__main__':
         if ext in VIDEO_FILES:
             print("Processing {} as a video file".format(filename))
             cap = cv2.VideoCapture(filename)
+            fourcc = cv2.VideoWriter_fourcc(*'X264')
+            out = cv2.VideoWriter('images/out.mp4', fourcc, 30.0, (int(cap.get(3)), int(cap.get(4))))
             frames = 1
             spinner = Halo(text='Processing frame 1', spinner='arc')
             spinner.start()
@@ -160,12 +165,17 @@ if __name__ == '__main__':
                 ret, frame = cap.read()
                 if ret:
                     processed = process_img(frame)
-                    cv2.imwrite('frames/frame{}.jpg'.format(frames), processed)
+                    #cv2.imshow('frames/frame{}.jpg'.format(frames), processed)
+                    out.write(processed)
                     frames += 1
                     spinner.text = 'Proccessing frame {}'.format(frames)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
                 else:
                     spinner.stop()
                     break
+            cap.release()
+            out.release()
         else:
             print("Processing {} as a image file".format(filename))
             original_img = cv2.imread(filename)
