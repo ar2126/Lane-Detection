@@ -1,9 +1,13 @@
 import argparse
 import cv2
 import sys
+import multiprocessing
 import numpy as np
 
 from halo import Halo
+from tqdm import tqdm
+from itertools import repeat
+
 
 VIDEO_FILES = ['mov', 'mp4']
 
@@ -31,8 +35,8 @@ def filter_gaussian(img):
 
 def sobel_edge_detection(image, filter):
     sobel_edge_x = cv2.filter2D(image, -1, filter)
-    #sobel_edge_x = image[:, 2:] - image[:, :-2]
-    #sobel_edge_x = sobel_edge_p[:-2] + sobel_edge_p[2:] + 2*sobel_edge_p[1:-1]
+    # sobel_edge_x = image[:, 2:] - image[:, :-2]
+    # sobel_edge_x = sobel_edge_p[:-2] + sobel_edge_p[2:] + 2*sobel_edge_p[1:-1]
 
     sobel_edge_y = cv2.filter2D(image, -1, np.flip(filter.T, axis=0))
 
@@ -148,20 +152,25 @@ def visualize_lines(frame, lines):
             cv2.line(lines_visualize, (x1, y1), (x2, y2), (0, 255, 0), 5)
     return lines_visualize
 
-def process_img(original_img):
+def process_img(original_img, use_cv2=False):
+    if use_cv2:
+        print('using cv2')
+        filtered_canny = cv2.Canny(original_img, 100, 255)
+    else:
+        gry_img = cv2.cvtColor(
+            original_img, cv2.COLOR_RGB2GRAY)
 
-    gry_img = cv2.cvtColor(original_img, cv2.COLOR_RGB2GRAY)
-    gauss = filter_gaussian(gry_img)
+        gauss = filter_gaussian(gry_img)
 
-    sobel_filter = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-    sobel, theta = sobel_edge_detection(gauss, sobel_filter)
+        sobel_filter = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+        sobel, theta = sobel_edge_detection(gauss, sobel_filter)
 
-    nonmax = non_max_suppression(sobel, theta)
-    double_threshold = threshold(nonmax, 20, 5)
+        nonmax = non_max_suppression(sobel, theta)
+        double_threshold = threshold(nonmax, 20, 5)
 
-    canny_highway = hysteresis(double_threshold)
+        canny_highway = hysteresis(double_threshold)
 
-    filtered_canny = apply_filter(canny_highway)
+        filtered_canny = apply_filter(canny_highway)
 
     hough = cv2.HoughLinesP(np.uint8(filtered_canny), 2, np.pi / 180, 100, np.array([]), minLineLength=100, maxLineGap=50)
 
@@ -192,8 +201,14 @@ def apply_filter(img):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Detect lanes in an image, video file, or webcam using canny edge detection and hough transform.')
-    parser.add_argument('-i', '--input', type=str, nargs='?',
-                        help='a file to process')
+    parser.add_argument('-i', '--input', type=str, nargs='?', required=True,
+                        help='filename to read from')
+    parser.add_argument('-o', '--output', type=str, nargs='?', required=True,
+                        help='the filename to write to')
+    parser.add_argument('-s', '--skip-frames', metavar='skip_frames', type=int, nargs='?',
+                        help='the number of frames to skip')
+    parser.add_argument('--opencv-canny', default=False, action='store_true',
+                        help="utilize opencv's image processing library instead of our own")
 
     args = parser.parse_args()
     if args.input:
@@ -203,26 +218,39 @@ if __name__ == '__main__':
             print("Processing {} as a video file".format(filename))
             cap = cv2.VideoCapture(filename)
             fourcc = cv2.VideoWriter_fourcc(*'X264')
-            out = cv2.VideoWriter('images/out.mp4', fourcc, 30.0, (int(cap.get(3)), int(cap.get(4))))
-            frames = 1
-            spinner = Halo(text='Processing frame 1', spinner='arc')
+            out = cv2.VideoWriter(args.output, fourcc,
+                                  30.0, (int(cap.get(3)), int(cap.get(4))))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            fs = 0
+            frames = []
+            spinner = Halo(text='Getting frame', spinner='arc')
+
             spinner.start()
             while(cap.isOpened()):
                 ret, frame = cap.read()
                 if ret:
-                    processed = process_img(frame)
-                    out.write(processed)
-                    frames += 1
-                    spinner.text = 'Proccessing frame {}'.format(frames)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                    if not args.skip_frames or fs % args.skip_frames == 0:
+                        spinner.text = 'Grabbing frame {}'.format(fs+1)
+                        frames.append(frame)
+                    fs += 1
+
                 else:
-                    spinner.stop()
                     break
+            spinner.stop()
+            multiprocessing.set_start_method('spawn')
+            pool = multiprocessing.Pool()
+
+            frames_arg = [(f, {'use_cv2': args.opencv_canny}) for f in frames]
+            processed_frames = []
+            for processed in tqdm(pool.imap(process_img, frames), total=len(frames)):
+                # processed_frames.append(processed)
+                out.write(np.array(processed, dtype=np.uint8))
+
             cap.release()
             out.release()
         else:
             print("Processing {} as a image file".format(filename))
             original_img = cv2.imread(filename)
             processed = process_img(original_img)
+
             cv2.imwrite('images/processed.jpg', processed)
